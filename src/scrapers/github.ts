@@ -30,7 +30,7 @@ async function searchRepos(query: string): Promise<GitHubRepo[]> {
       return [];
     }
 
-    const data = await response.json();
+    const data = await response.json() as { items?: any[] };
     return (data.items || []).slice(0, GITHUB_CONFIG.maxRepos).map((repo: any) => ({
       name: repo.full_name,
       description: repo.description || "",
