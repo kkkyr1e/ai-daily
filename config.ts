@@ -6,8 +6,8 @@ export const RSS_SOURCES = {
     "https://huggingface.co/blog/feed.xml",
   ],
   papers: [
-    "http://export.arxiv.org/RSS/cs.AI",
-    "http://export.arxiv.org/RSS/cs.LG",
+    "https://rss.arxiv.org/rss/cs.AI",
+    "https://rss.arxiv.org/rss/cs.LG",
   ],
 };
 

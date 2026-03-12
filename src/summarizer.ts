@@ -4,6 +4,12 @@ import type { RssItem } from "./scrapers/rss";
 import type { ArxivPaper } from "./scrapers/arxiv";
 import type { GitHubRepo } from "./scrapers/github";
 
+// 支持自定义 API base URL（兼容 GLM-5 等模型）
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  baseURL: process.env.ANTHROPIC_BASE_URL || undefined,
+});
+
 const SYSTEM_PROMPT = `你是 AI 领域专家，负责整理每日 AI 动态日报。
 
 输出格式（严格遵循 Markdown）：
@@ -73,14 +79,14 @@ export async function summarizeWithRetry(
   repos: GitHubRepo[],
   retries = 2
 ): Promise<string> {
-  const client = new Anthropic();
   const rawContent = buildRawContent(newsItems, papers, repos);
+  const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const response = await client.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 3000,
+        model,
+        max_tokens: 8000,
         messages: [
           {
             role: "user",
@@ -89,11 +95,28 @@ export async function summarizeWithRetry(
         ],
       });
 
-      const text = response.content[0];
-      if (text.type === "text") {
-        return text.text;
+      // 查找 text 类型的内容
+      for (const block of response.content) {
+        if (block.type === "text") {
+          return block.text;
+        }
       }
-      throw new Error("Unexpected response type");
+
+      // 兼容 GLM-5 等模型的 thinking 格式
+      const thinkingBlock = response.content.find((b: any) => b.type === "thinking");
+      if (thinkingBlock && (thinkingBlock as any).thinking) {
+        const thinkingContent = (thinkingBlock as any).thinking;
+        if (thinkingContent.includes("##") || thinkingContent.length > 500) {
+          return thinkingContent;
+        }
+      }
+
+      // 兼容其他格式
+      if (typeof response.content === "string") {
+        return response.content;
+      }
+
+      throw new Error(`No text content found in response`);
     } catch (error) {
       console.warn(`[WARN] Claude API attempt ${attempt + 1} failed: ${error}`);
       if (attempt === retries) {
