@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}  # 使用 PAT 以支持推送
 
       - uses: actions/setup-node@v4
         with:
@@ -29,8 +31,10 @@ jobs:
       - name: Generate daily report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node dist/index.js
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+        run: node dist/src/index.js
 
       - name: Commit and push
         run: |
