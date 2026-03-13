@@ -77,13 +77,14 @@ export async function summarizeWithRetry(
   newsItems: RssItem[],
   papers: ArxivPaper[],
   repos: GitHubRepo[],
-  retries = 2
+  retries = 3
 ): Promise<string> {
   const rawContent = buildRawContent(newsItems, papers, repos);
   const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      console.log(`[INFO] Claude API attempt ${attempt + 1}/${retries + 1}, model: ${model}`);
       const response = await client.messages.create({
         model,
         max_tokens: 4000,
@@ -93,7 +94,7 @@ export async function summarizeWithRetry(
             content: `${SYSTEM_PROMPT}\n\n---\n\n原始内容：\n\n${rawContent}`,
           },
         ],
-      }, { timeout: 120000 });
+      });
 
       // 查找 text 类型的内容
       for (const block of response.content) {
@@ -122,7 +123,10 @@ export async function summarizeWithRetry(
       if (attempt === retries) {
         throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      // 指数退避：5s, 15s, 45s
+      const delay = 5000 * Math.pow(3, attempt);
+      console.log(`[INFO] 等待 ${delay/1000}s 后重试...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
 
