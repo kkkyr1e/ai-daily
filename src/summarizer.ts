@@ -86,14 +86,14 @@ export async function summarizeWithRetry(
     try {
       const response = await client.messages.create({
         model,
-        max_tokens: 8000,
+        max_tokens: 4000,
         messages: [
           {
             role: "user",
             content: `${SYSTEM_PROMPT}\n\n---\n\n原始内容：\n\n${rawContent}`,
           },
         ],
-      });
+      }, { timeout: 120000 });
 
       // 查找 text 类型的内容
       for (const block of response.content) {
