@@ -5,10 +5,16 @@ import type { ArxivPaper } from "./scrapers/arxiv";
 import type { GitHubRepo } from "./scrapers/github";
 
 // 支持自定义 API base URL（兼容 GLM-5 等模型）
+// 设置较长的超时时间（5分钟）
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
   baseURL: process.env.ANTHROPIC_BASE_URL || undefined,
+  timeout: 300000, // 5 分钟超时
 });
+
+// 非 Anthropic API 可能需要使用 fetch with timeout
+const API_TIMEOUT = 300000; // 5 分钟
+const MAX_INPUT_LENGTH = 50000; // 限制输入长度，避免超长内容导致超时
 
 const SYSTEM_PROMPT = `你是 AI 领域专家，负责整理每日 AI 动态日报。
 
@@ -79,22 +85,37 @@ export async function summarizeWithRetry(
   repos: GitHubRepo[],
   retries = 3
 ): Promise<string> {
-  const rawContent = buildRawContent(newsItems, papers, repos);
+  let rawContent = buildRawContent(newsItems, papers, repos);
   const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+
+  // 限制输入长度，避免超时
+  if (rawContent.length > MAX_INPUT_LENGTH) {
+    console.log(`[INFO] 输入内容过长 (${rawContent.length} 字符)，截断至 ${MAX_INPUT_LENGTH} 字符`);
+    rawContent = rawContent.substring(0, MAX_INPUT_LENGTH) + "\n\n... (内容已截断)";
+  }
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      console.log(`[INFO] Claude API attempt ${attempt + 1}/${retries + 1}, model: ${model}`);
-      const response = await client.messages.create({
-        model,
-        max_tokens: 4000,
-        messages: [
-          {
-            role: "user",
-            content: `${SYSTEM_PROMPT}\n\n---\n\n原始内容：\n\n${rawContent}`,
-          },
-        ],
+      console.log(`[INFO] Claude API attempt ${attempt + 1}/${retries + 1}, model: ${model}, input: ${rawContent.length} 字符`);
+
+      // 使用 Promise.race 实现超时控制
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`API timeout after ${API_TIMEOUT/1000}s`)), API_TIMEOUT);
       });
+
+      const response = await Promise.race([
+        client.messages.create({
+          model,
+          max_tokens: 4000,
+          messages: [
+            {
+              role: "user",
+              content: `${SYSTEM_PROMPT}\n\n---\n\n原始内容：\n\n${rawContent}`,
+            },
+          ],
+        }),
+        timeoutPromise
+      ]);
 
       // 查找 text 类型的内容
       for (const block of response.content) {
@@ -123,8 +144,8 @@ export async function summarizeWithRetry(
       if (attempt === retries) {
         throw error;
       }
-      // 指数退避：5s, 15s, 45s
-      const delay = 5000 * Math.pow(3, attempt);
+      // 指数退避：10s, 30s, 90s
+      const delay = 10000 * Math.pow(3, attempt);
       console.log(`[INFO] 等待 ${delay/1000}s 后重试...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
