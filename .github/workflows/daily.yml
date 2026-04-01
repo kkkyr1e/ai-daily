@@ -3,7 +3,7 @@ name: AI Daily Digest
 
 on:
   schedule:
-    - cron: "0 0 * * *"  # UTC 0:00 = 北京 8:00
+    
   workflow_dispatch:       # 支持手动触发
 
 permissions:
